@@ -67,12 +67,7 @@
 	$subject["URDS"] = "Urban Design";
 	$subject["URPL"] = "Urban Planning";
 	
-	$con = mysql_connect("localhost","root","");
-	if (!$con) {
-		die('Could not connect: ' . mysql_error());
-	}
-	
-	mysql_select_db("sis", $con);
+	include('database.php');
 	
 	foreach($subject as $key => $s) {
 		$s = str_replace("'", "&#39;", $s);

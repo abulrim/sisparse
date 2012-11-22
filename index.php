@@ -48,11 +48,7 @@
     set_time_limit(0);
 
     //connect to db
-    $con = mysql_connect("localhost", "root", "");
-    if (!$con) {
-        die('Could not connect: ' . mysql_error());
-    }
-    mysql_select_db("siscode", $con);
+    include('database.php');
 
     //select the file
     $text = file_get_contents("courses.html");

@@ -26,12 +26,7 @@
         }
         
         //connect to db
-	$con = mysql_connect("localhost","root","");
-	if (!$con) {
-		die('Could not connect: ' . mysql_error());
-	}
-	mysql_select_db("sis", $con);
-	
+	include('database.php');
         
 	$result = mysql_query("SELECT * FROM courses_");
 	
@@ -43,9 +38,16 @@
 		$number = $row['course'];
 		$section = $row['section'];
 		$title = $row['title'];
-		
-		mysql_query("INSERT INTO courses (term, crn, subject_id, number, section, title) 
-				VALUES ('$term','$crn','$subject_id','$number','$section','$title')");
+		$mon = $row['m_1'] || $row['m_2'];
+		$tue = $row['t_1'] || $row['t_2'];
+		$wed = $row['w_1'] || $row['w_2'];
+		$thu = $row['r_1'] || $row['r_2'];
+		$fri = $row['f_1'] || $row['f_2'];
+		$sat = $row['s_1'] || $row['s_2'];
+                
+                
+		mysql_query("INSERT INTO courses (term, crn, subject_id, number, section, title, m, t, w, r, f, s) 
+				VALUES ('$term','$crn','$subject_id','$number','$section','$title', '$mon', '$tue', '$wed', '$thu', '$fri', '$sat')");
 		
 		$course_id = mysql_insert_id();
 		
