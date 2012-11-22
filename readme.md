@@ -3,7 +3,6 @@ sisparse
 
 sisparse is used to parse the html courses table to a nomalized sql table.
 
-Steps:
 1. Import the **siscode.sql** file to your database
 2. Download the courses by saving the html file and replacing the **courses.html** file
 3. Change the **database.php** credentials if needed
