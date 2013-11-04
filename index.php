@@ -1,10 +1,8 @@
 <?php
 
-//generic function
-
 function cleanField($field) {
 	//decode any html character
-	$field = html_entity_decode($field);
+	$field = html_entity_decode($field, ENT_COMPAT, 'ISO-8859-1');
 
 	//replace white space char to ' '
 	//http://stackoverflow.com/questions/6275380/does-html-entity-decode-replaces-nbsp-also-if-not-how-to-replace-it
@@ -12,9 +10,6 @@ function cleanField($field) {
 
 	//remove html characters
 	$field = strip_tags($field);
-
-	//escape field
-	$field = mysql_real_escape_string($field);
 
 	//remove whitespace
 	$field = trim($field);
@@ -56,26 +51,29 @@ function addEl($array, $el, $pos) {
 //run indefinitely
 set_time_limit(0);
 
-//connect to db
-include('database.php');
+//db configuration
+require_once 'database.php';
 
 //select the file
 $text = file_get_contents("courses.html");
 
 //extract the right table
 $startTable = stripos($text, '<table class="datadisplaytable"');
-$text = substr($text, $startTable);
+$endTable = stripos($text, '</table>', $startTable) + 8;
+$text = substr($text, $startTable, $endTable - $startTable);
 
 //start parsing (loop through all rows)
-$insertId = null;
 $start = stripos($text, '<tr');
+$course = null;
+
 while ($start !== false) {
 	$end = stripos($text, '</tr>', $start) + 5;
 	$offset = $end - $start;
 
 	$tr = substr($text, $start, $offset);
+	$text = substr($text, $end + 1);
 
-	//loop through all columns
+	//loop through all columns and insert each cell in $rowContent
 	$rowContent = array();
 	$colStart = stripos($tr, '<td');
 	while ($colStart !== false) {
@@ -97,8 +95,6 @@ while ($start !== false) {
 	if (!empty($rowContent)) {
 
 		$crn = $rowContent[1];
-
-		echo $crn . '<br>';
 
 		$code = $rowContent[2];
 		$number = $rowContent[3];
@@ -141,70 +137,57 @@ while ($start !== false) {
 			$sat = 1;
 		}
 
-		if (!empty($rowContent[1])) {
-			mysql_query("INSERT INTO courses_ (
-                    term, 
-                    crn, 
-                    subject, 
-                    course, 
-                    section, 
-                    title, 
-                    begin_time_1, 
-                    end_time_1, 
-                    building_1, 
-                    room_1, 
-                    m_1, 
-                    t_1, 
-                    w_1, 
-                    r_1, 
-                    f_1, 
-                    sat_1, 
-                    sun_1, 
-                    instructor_1
-                ) VALUES (
-                    '201320', 
-                    '$crn',
-                    '$code',
-                    '$number',
-                    '$section',
-                    '$title',
-                    '$startTime',
-                    '$endTime',
-                    '$building',
-                    '$room',
-                    '$m',
-                    '$t',
-                    '$w',
-                    '$r',
-                    '$f',
-                    '$sat',
-                    '$sun',
-                    '$instructor'
-                )");
-			$insertId = mysql_insert_id();
-			if ($startTime == NULL) {
-				mysql_query("UPDATE courses_ SET begin_time_1=NULL, end_time_1=NULL WHERE id='$insertId'");
-			}
+		if ($startTime == null) {
+			$startTime = null;
+			$endTime = null;
+		}
+
+		if (!empty($crn)) {
+
+			$course = ORM::for_table('courses_')->create();
+			$course->set(array(
+				'term' => '201420',
+				'crn' => $crn,
+				'subject' => $code,
+				'course' => $number,
+				'section' => $section,
+				'title' => $title,
+				'begin_time_1' => $startTime,
+				'end_time_1' => $endTime,
+				'building_1' => $building,
+				'room_1' => $room,
+				'm_1' => $m,
+                't_1' => $t,
+                'w_1' => $w,
+                'r_1' => $r,
+                'f_1' => $f,
+                'sat_1' => $sat,
+                'sun_1' => $sun,
+                'instructor_1' => $instructor
+			));
+			$course->save();
+
 		} else {
-			mysql_query("UPDATE courses_ SET 
-                    begin_time_2='$startTime', 
-                    end_time_2='$endTime', 
-                    building_2='$building', 
-                    room_2='$room', 
-                    m_2='$m', 
-                    t_2='$t', 
-                    w_2='$w', 
-                    r_2='$r', 
-                    f_2='$f', 
-                    sat_2='$sat', 
-                    sun_2='$sun', 
-                    instructor_2='$instructor'
-                    WHERE id='$insertId'");
-			if ($startTime == NULL) {
-				mysql_query("UPDATE courses_ SET begin_time_2=NULL, end_time_2=NULL WHERE id='$insertId'");
-			}
+
+			$course->set(array(
+				'begin_time_2' => $startTime,
+				'end_time_2' => $endTime,
+				'building_2' => $building,
+				'room_2' => $room,
+				'm_2' => $m,
+                't_2' => $t,
+                'w_2' => $w,
+                'r_2' => $r,
+                'f_2' => $f,
+                'sat_2' => $sat,
+                'sun_2' => $sun,
+                'instructor_2' => $instructor
+			));
+			$course->save();
+
 		}
 	}
-	$start = stripos($text, '<tr', $end);
+	$start = stripos($text, '<tr');
 }
+
 ?>

@@ -1,39 +1,78 @@
 <?php
 
+//connect to db
+require_once 'database.php';
+
+//run indefinitely
 set_time_limit(0);
 
-function checkInstructor($name) {
-	$instructorResult = mysql_query("SELECT * FROM instructors WHERE name='$name'");
-	if ($instructorResult && mysql_num_rows($instructorResult)) {
-		$instructors = mysql_fetch_assoc($instructorResult);
-		$instructor_id = $instructors['id'];
-	} else {
-		mysql_query("INSERT INTO instructors (name) VALUES ('$name')");
-		$instructor_id = mysql_insert_id();
+// checks the existance of a model with a certain property in table and returns
+// id of found ot created model
+function checkExistance($tableName, $propertyName, $propertyValue) {
+
+	if (!$propertyValue) {
+		$propertyValue = 'TBA';
 	}
-	return $instructor_id;
+
+	$model = ORM::for_table($tableName)->where($propertyName, $propertyValue)->find_one();
+
+	if (!$model) {
+		$model = ORM::for_table($tableName)->create();
+		$model->set($propertyName, $propertyValue);
+		$model->save();
+	}
+	return $model->id;
+
 }
 
-function checkSubjects($code) {
-	$subjectResult = mysql_query("SELECT * FROM subjects WHERE code='$code'");
-	if (mysql_num_rows($subjectResult)) {
-		$subjects = mysql_fetch_assoc($subjectResult);
-		$subject_id = $subjects['id'];
-	} else {
-		mysql_query("INSERT INTO subjects (code) VALUES ('$code')");
-		$subject_id = mysql_insert_id();
+function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $room, $course_id) {
+
+	// return if any day null
+	foreach ($days as $day) {
+		if ($day == null) {
+			break;
+			return;
+		}
 	}
-	return $subject_id;
+
+	if (!$startTime or !$endTime or !$course_id) {
+		return;
+	}
+	if (!$building) {
+		$building = 'TBA';
+	}
+	if (!$room) {
+		$room = 'TBA';
+	}
+
+	$instructor_id = checkExistance('instructors', 'name', $instructor);
+
+	foreach ($days as $key => $day) {
+		$dd = $key + 1;
+		if ($day == 1) {
+
+			$courseSlot = ORM::for_table('course_slots')->create();
+			$courseSlot->set(array(
+				'start_time' => $startTime,
+				'end_time' => $endTime,
+				'building' => $building,
+				'room' => $room,
+				'instructor_id' => $instructor_id,
+				'day' => $dd,
+				'course_id' => $course_id
+			));
+			$courseSlot->save();
+
+		}
+	}
+
 }
 
-//connect to db
-include('database.php');
+$result = ORM::for_table('courses_')->find_array();
 
-$result = mysql_query("SELECT * FROM courses_");
-
-while ($row = mysql_fetch_array($result)) {
+foreach ($result as $row) {
 	$code = $row['subject'];
-	$subject_id = checkSubjects($code);
+	$subject_id = checkExistance('subjects', 'code', $code);
 	$term = $row['term'];
 	$crn = $row['crn'];
 	$number = $row['course'];
@@ -46,46 +85,58 @@ while ($row = mysql_fetch_array($result)) {
 	$fri = $row['f_1'] || $row['f_2'];
 	$sat = $row['sat_1'] || $row['sat_2'];
 
+	// insert course
+	$course = ORM::for_table('courses')->create();
+	$course->set(array(
+		'term' => $term,
+		'crn' => $crn,
+		'subject_id' => $subject_id,
+		'number' => $number,
+		'section' => $section,
+		'title' => $title,
+		'm' => $mon,
+		't' => $tue,
+		'w' => $wed,
+		'r' => $thu,
+		'f' => $fri,
+        's' => $sat
+	));
+	$course->save();
 
-	mysql_query("INSERT INTO courses (term, crn, subject_id, number, section, title, m, t, w, r, f, s) 
-				VALUES ('$term','$crn','$subject_id','$number','$section','$title', '$mon', '$tue', '$wed', '$thu', '$fri', '$sat')");
+	// insert first course slot
+	insertCourseSlot(
+		$row['instructor_1'],
+		array(
+			$row['m_1'],
+			$row['t_1'],
+			$row['w_1'],
+			$row['r_1'],
+			$row['f_1'],
+			$row['sat_1']
+		),
+		$row['begin_time_1'],
+		$row['end_time_1'],
+		$row['building_1'],
+		$row['room_1'],
+		$course->id
+	);
 
-	$course_id = mysql_insert_id();
-
-	$instructor_1 = $row['instructor_1'];
-	$instructor_2 = $row['instructor_2'];
-
-	$instructor_id_1 = checkInstructor($instructor_1);
-	$instructor_id_2 = checkInstructor($instructor_2);
-
-	$days = array($row['m_1'], $row['t_1'], $row['w_1'], $row['r_1'], $row['f_1'], $row['sat_1']);
-
-	$startTime = $row['begin_time_1'];
-	$endTime = $row['end_time_1'];
-	$building = $row['building_1'];
-	$room = $row['room_1'];
-
-	foreach ($days as $key => $day) {
-		$dd = $key + 1;
-		if ($day == 1) {
-			mysql_query("INSERT INTO course_slots (start_time, end_time, building, room, instructor_id, day, course_id) 
-					VALUES ('$startTime','$endTime','$building','$room','$instructor_id_1','$dd','$course_id')");
-		}
-	}
-
-	$days = array($row['m_2'], $row['t_2'], $row['w_2'], $row['r_2'], $row['f_2'], $row['sat_2']);
-
-	$startTime = $row['begin_time_2'];
-	$endTime = $row['end_time_2'];
-	$building = $row['building_2'];
-	$room = $row['room_2'];
-
-	foreach ($days as $key => $day) {
-		$dd = $key + 1;
-		if ($day == 1) {
-			mysql_query("INSERT INTO course_slots (start_time, end_time, building, room, instructor_id, day, course_id) 
-					VALUES ('$startTime','$endTime','$building','$room','$instructor_id_2','$dd','$course_id')");
-		}
-	}
+	// insert second course slot
+	insertCourseSlot(
+		$row['instructor_2'],
+		array(
+			$row['m_2'],
+			$row['t_2'],
+			$row['w_2'],
+			$row['r_2'],
+			$row['f_2'],
+			$row['sat_2']
+		),
+		$row['begin_time_2'],
+		$row['end_time_2'],
+		$row['building_2'],
+		$row['room_2'],
+		$course->id
+	);
 }
 ?>

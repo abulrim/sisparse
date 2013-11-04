@@ -1,7 +1,6 @@
 <?php
-$con = mysql_connect("localhost", "root", "");
-if (!$con) {
-    die('Could not connect: ' . mysql_error());
-}
-mysql_select_db("siscode", $con);
+	require_once 'vendor/idiorm.php';
+	ORM::configure('mysql:host=localhost;dbname=siscode');
+	ORM::configure('username', 'root');
+	ORM::configure('password', '');
 ?>
