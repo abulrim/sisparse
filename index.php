@@ -71,7 +71,7 @@ while ($start !== false) {
 	$offset = $end - $start;
 
 	$tr = substr($text, $start, $offset);
-	$text = substr($text, $end + 1);
+	$text = substr($text, $end);
 
 	//loop through all columns and insert each cell in $rowContent
 	$rowContent = array();
