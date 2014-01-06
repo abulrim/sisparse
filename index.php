@@ -1,5 +1,9 @@
 <?php
 
+define('INSTITUTION', 'lau');  
+define('INSTITUTION_ID', 2);  
+define('TERM', 'Spring 2014');  
+
 function cleanField($field) {
 	//decode any html character
 	$field = html_entity_decode($field, ENT_COMPAT, 'ISO-8859-1');
@@ -17,19 +21,48 @@ function cleanField($field) {
 }
 
 function parseTime($time) {
-	if (strtolower($time) == 'tba') {
+	if (strtolower($time) == 'tba' || empty($time)) {
 		return array(NULL, NULL);
 	}
-	if (empty($time)) {
-		return array(NULL, NULL);
-	}
-	$parsedTime = array();
+
 	$parsedTime = explode('-', $time);
+
+	if (count($parsedTime) !== 2) {
+		return array(NULL, NULL);		
+	}
 
 	$parsedTime[0] = date('H:i:s', strtotime($parsedTime[0]));
 	$parsedTime[1] = date('H:i:s', strtotime($parsedTime[1]));
 
 	return $parsedTime;
+}
+
+function parseDays($days) {
+	if (strtolower($days) == 'tba') {
+		$days = '';
+	}
+	$m = $t = $w = $r = $f = $sat = $sun = 0;
+
+	if (stripos($days, 'M') !== false) {
+		$m = 1;
+	}
+	if (stripos($days, 'T') !== false) {
+		$t = 1;
+	}
+	if (stripos($days, 'W') !== false) {
+		$w = 1;
+	}
+	if (stripos($days, 'R') !== false) {
+		$r = 1;
+	}
+	if (stripos($days, 'F') !== false) {
+		$f = 1;
+	}
+	if (stripos($days, 'S') !== false) {
+		$sat = 1;
+	}
+
+	return array($m, $t, $w, $r, $f, $sat);
 }
 
 function parseLocation($location) {
@@ -48,6 +81,164 @@ function addEl($array, $el, $pos) {
 	return array_merge(array_slice($array, 0, $pos), array($el), array_slice($array, $pos));
 }
 
+// checks the existance of a model with a certain property in table and returns
+// id of found ot created model
+function checkExistance($tableName, $propertyName, $propertyValue) {
+	if (!$propertyValue) {
+		$propertyValue = 'TBA';
+	}
+
+	if ($tableName == 'subjects') {
+		$model = ORM::for_table($tableName)
+					->where('institution_id', INSTITUTION_ID)
+					->where($propertyName, $propertyValue)
+					->find_one();	
+	} else {
+		$model = ORM::for_table($tableName)->where($propertyName, $propertyValue)->find_one();	
+	}
+
+	if (!$model) {
+		$model = ORM::for_table($tableName)->create();
+		$model->set($propertyName, $propertyValue);
+		if ($tableName == 'subjects') {
+			$model->set('institution_id', INSTITUTION_ID);
+		}
+		$model->save();
+	}
+	return $model->id;
+}
+
+function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $room, $courseId) {
+	// return if any day null
+	foreach ($days as $day) {
+		if ($day == null) {
+			break;
+			return;
+		}
+	}
+
+	if (!$startTime or !$endTime or !$courseId) {
+		return;
+	}
+	if (!$building) {
+		$building = 'TBA';
+	}
+	if (!$room) {
+		$room = 'TBA';
+	}
+
+	$instructorId = checkExistance('instructors', 'name', $instructor);
+
+	foreach ($days as $key => $day) {
+		$dd = $key + 1;
+		if ($day == 1) {
+			$courseSlot = ORM::for_table('course_slots')->create();
+			$courseSlot->set(array(
+				'start_time' => $startTime,
+				'end_time' => $endTime,
+				'building' => $building,
+				'room' => $room,
+				'instructor_id' => $instructorId,
+				'day' => $dd,
+				'course_id' => $courseId
+			));
+			$courseSlot->save();
+
+		}
+	}
+
+}
+
+function handleRow($row, $lastCourseId = false) {
+	$crn = $row[1];
+	$code = $row[2];
+	$number = $row[3];
+	$section = $row[4];
+	$title = $row[7];
+	$days = parseDays($row[8]);
+	$instructor = $row[19];
+
+	// fix time
+	$time = parseTime($row[9]);
+	$startTime = $time[0];
+	$endTime = $time[1];
+
+	// fix building
+	$location = parseLocation($row[21]);
+	$building = $location[0];
+	$room = $location[1];
+
+	if (!empty($crn)) {
+		$subjectId = checkExistance('subjects', 'code', $code);
+
+		$course = ORM::for_table('courses')->create();
+		$course->set(array(
+			'term' => TERM,
+			'crn' => $crn,
+			'subject_id' => $subjectId,
+			'number' => $number,
+			'section' => $section,
+			'title' => $title
+		));
+		$course->save();
+		$lastCourseId = $course->id;
+	}
+
+	insertCourseSlot(
+		$instructor,
+		$days,
+		$startTime,
+		$endTime,
+		$building,
+		$room,
+		$lastCourseId
+	);
+
+	return $lastCourseId;
+}
+
+function parse($text) {
+	//extract the right table
+	$startTable = stripos($text, '<table  class="datadisplaytable"');
+	$endTable = stripos($text, '</table>', $startTable) + 8;
+	$text = substr($text, $startTable, $endTable - $startTable);
+
+	//start parsing (loop through all rows)
+	$start = stripos($text, '<tr');
+
+	while ($start !== false) {
+		$lastCourseId = false;
+		$end = stripos($text, '</tr>', $start) + 5;
+		$offset = $end - $start;
+
+		$tr = substr($text, $start, $offset);
+		$text = substr($text, $end);
+
+		//loop through all columns and insert each cell in $rowContent
+		$rowContent = array();
+		$colStart = stripos($tr, '<td');
+		while ($colStart !== false) {
+			$colEnd = stripos($tr, '</td>', $colStart) + 5;
+			$colOffset = $colEnd - $colStart;
+			$cell = substr($tr, $colStart, $colOffset);
+
+			$rowContent[] = cleanField($cell);
+
+			// colspan fix
+			if (stripos($cell, 'colspan="2"')) {
+				$rowContent[] = '';
+			}
+
+			$colStart = stripos($tr, '<td', $colEnd);
+		}
+
+		if (!empty($rowContent)) {
+			$lastCourseId = handleRow($rowContent, $lastCourseId);
+		}
+		$start = stripos($text, '<tr');
+	}
+}
+
 //run indefinitely
 set_time_limit(0);
 
@@ -56,138 +247,6 @@ require_once 'database.php';
 
 //select the file
 $text = file_get_contents("courses.html");
-
-//extract the right table
-$startTable = stripos($text, '<table class="datadisplaytable"');
-$endTable = stripos($text, '</table>', $startTable) + 8;
-$text = substr($text, $startTable, $endTable - $startTable);
-
-//start parsing (loop through all rows)
-$start = stripos($text, '<tr');
-$course = null;
-
-while ($start !== false) {
-	$end = stripos($text, '</tr>', $start) + 5;
-	$offset = $end - $start;
-
-	$tr = substr($text, $start, $offset);
-	$text = substr($text, $end);
-
-	//loop through all columns and insert each cell in $rowContent
-	$rowContent = array();
-	$colStart = stripos($tr, '<td');
-	while ($colStart !== false) {
-		$colEnd = stripos($tr, '</td>', $colStart) + 5;
-		$colOffset = $colEnd - $colStart;
-
-		$rowContent[] = cleanField(substr($tr, $colStart, $colOffset));
-
-		$colStart = stripos($tr, '<td', $colEnd);
-	}
-
-	if (empty($rowContent[1]) && !empty($rowContent)) {
-		array_unshift($rowContent, '');
-	}
-	if (count($rowContent) == 23) {
-		$rowContent = addEl($rowContent, '', 10);
-	}
-
-	if (!empty($rowContent)) {
-
-		$crn = $rowContent[1];
-
-		$code = $rowContent[2];
-		$number = $rowContent[3];
-		$section = $rowContent[4];
-		$title = $rowContent[7];
-		$instructor = $rowContent[20];
-
-		//fix time
-		$time = parseTime($rowContent[10]);
-		$startTime = $time[0];
-		$endTime = $time[1];
-
-		//fix building
-		$location = parseLocation($rowContent[22]);
-		$building = $location[0];
-		$room = $location[1];
-
-		$days = $rowContent[9];
-		if (strtolower($days) == 'tba') {
-			$days = '';
-		}
-		$m = $t = $w = $r = $f = $sat = $sun = 0;
-
-		if (stripos($days, 'M') !== false) {
-			$m = 1;
-		}
-		if (stripos($days, 'T') !== false) {
-			$t = 1;
-		}
-		if (stripos($days, 'W') !== false) {
-			$w = 1;
-		}
-		if (stripos($days, 'R') !== false) {
-			$r = 1;
-		}
-		if (stripos($days, 'F') !== false) {
-			$f = 1;
-		}
-		if (stripos($days, 'S') !== false) {
-			$sat = 1;
-		}
-
-		if ($startTime == null) {
-			$startTime = null;
-			$endTime = null;
-		}
-
-		if (!empty($crn)) {
-
-			$course = ORM::for_table('courses_')->create();
-			$course->set(array(
-				'term' => '201420',
-				'crn' => $crn,
-				'subject' => $code,
-				'course' => $number,
-				'section' => $section,
-				'title' => $title,
-				'begin_time_1' => $startTime,
-				'end_time_1' => $endTime,
-				'building_1' => $building,
-				'room_1' => $room,
-				'm_1' => $m,
-                't_1' => $t,
-                'w_1' => $w,
-                'r_1' => $r,
-                'f_1' => $f,
-                'sat_1' => $sat,
-                'sun_1' => $sun,
-                'instructor_1' => $instructor
-			));
-			$course->save();
-
-		} else {
-
-			$course->set(array(
-				'begin_time_2' => $startTime,
-				'end_time_2' => $endTime,
-				'building_2' => $building,
-				'room_2' => $room,
-				'm_2' => $m,
-                't_2' => $t,
-                'w_2' => $w,
-                'r_2' => $r,
-                'f_2' => $f,
-                'sat_2' => $sat,
-                'sun_2' => $sun,
-                'instructor_2' => $instructor
-			));
-			$course->save();
-
-		}
-	}
-	$start = stripos($text, '<tr');
-}
+parse($text);
 
 ?>

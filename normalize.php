@@ -22,7 +22,6 @@ function checkExistance($tableName, $propertyName, $propertyValue) {
 		$model->save();
 	}
 	return $model->id;
-
 }
 
 function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $room, $course_id) {
