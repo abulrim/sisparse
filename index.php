@@ -1,8 +1,8 @@
 <?php
 
-define('INSTITUTION', 'lau');  
-define('INSTITUTION_ID', 2);  
-define('TERM', 'Spring 2014');  
+define('INSTITUTION', 'LAU');
+define('INSTITUTION_ID', 2);
+define('TERM', 'Spring 2014');
 
 function cleanField($field) {
 	//decode any html character
@@ -28,7 +28,7 @@ function parseTime($time) {
 	$parsedTime = explode('-', $time);
 
 	if (count($parsedTime) !== 2) {
-		return array(NULL, NULL);		
+		return array(NULL, NULL);
 	}
 
 	$parsedTime[0] = date('H:i:s', strtotime($parsedTime[0]));
@@ -92,9 +92,9 @@ function checkExistance($tableName, $propertyName, $propertyValue) {
 		$model = ORM::for_table($tableName)
 					->where('institution_id', INSTITUTION_ID)
 					->where($propertyName, $propertyValue)
-					->find_one();	
+					->find_one();
 	} else {
-		$model = ORM::for_table($tableName)->where($propertyName, $propertyValue)->find_one();	
+		$model = ORM::for_table($tableName)->where($propertyName, $propertyValue)->find_one();
 	}
 
 	if (!$model) {
@@ -109,6 +109,8 @@ function checkExistance($tableName, $propertyName, $propertyValue) {
 }
 
 function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $room, $courseId) {
+
+
 	// return if any day null
 	foreach ($days as $day) {
 		if ($day == null) {
@@ -143,7 +145,6 @@ function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $
 				'course_id' => $courseId
 			));
 			$courseSlot->save();
-
 		}
 	}
 
@@ -156,12 +157,13 @@ function handleRow($row, $lastCourseId = false) {
 	$section = $row[4];
 	$title = $row[7];
 	$days = parseDays($row[8]);
-	$instructor = $row[19];
 
 	// fix time
 	$time = parseTime($row[9]);
 	$startTime = $time[0];
 	$endTime = $time[1];
+
+	$instructor = $row[19];
 
 	// fix building
 	$location = parseLocation($row[21]);
@@ -198,8 +200,11 @@ function handleRow($row, $lastCourseId = false) {
 }
 
 function parse($text) {
+	$lastCourseId = false;
+
 	//extract the right table
-	$startTable = stripos($text, '<table  class="datadisplaytable"');
+	$startText = (INSTITUTION == 'LAU') ? '<table  class="datadisplaytable"' : '<table class="datadisplaytable"';
+	$startTable = stripos($text, $startText);
 	$endTable = stripos($text, '</table>', $startTable) + 8;
 	$text = substr($text, $startTable, $endTable - $startTable);
 
@@ -207,7 +212,6 @@ function parse($text) {
 	$start = stripos($text, '<tr');
 
 	while ($start !== false) {
-		$lastCourseId = false;
 		$end = stripos($text, '</tr>', $start) + 5;
 		$offset = $end - $start;
 
@@ -233,9 +237,183 @@ function parse($text) {
 		}
 
 		if (!empty($rowContent)) {
+			if (INSTITUTION == 'AUB') {
+				if (empty($rowContent[1])) {
+					array_unshift($rowContent, '');
+				}
+				if (count($rowContent) == 23) {
+					$rowContent = addEl($rowContent, '', 10);
+				}
+			}
+
 			$lastCourseId = handleRow($rowContent, $lastCourseId);
 		}
 		$start = stripos($text, '<tr');
+	}
+}
+
+function fixCourseDays() {
+	$courses = ORM::for_table('courses')->find_many();
+
+	foreach($courses as $course) {
+		$days = array('m', 't', 'w', 'r', 'f', 's');
+
+		$courseSlots = ORM::for_table('course_slots')->where('course_id', $course->id)->find_array();
+		foreach($courseSlots as $courseSlot) {
+			$course->set($days[$courseSlot['day'] - 1], 1);
+		}
+
+		$course->save();
+	}
+}
+
+function fixSubjects() {
+	$subjects = array(
+		"AUB" => array(
+			"ACCT" => "Accounting",
+			"AGSC" => "Agricultural Science",
+			"AMST" => "American Studies",
+			"AVSC" => "Animal and Veterinary Sciences",
+			"ARAB" => "Arabic",
+			"AROL" => "Archaeology",
+			"ARCH" => "Architecture",
+			"BIOC" => "Biochemistry",
+			"BIOL" => "Biology",
+			"BUSS" => "Business",
+			"CHEN" => "Chemical Engineering",
+			"CHEM" => "Chemistry",
+			"CHIN" => "Chinese",
+			"CIVE" => "Civil &amp; Environmental  Eng&#39g",
+			"CVSP" => "Civilization Sequence",
+			"CMTS" => "Computational Science",
+			"CMPS" => "Computer Science",
+			"DCSN" => "Decision System",
+			"ECON" => "Economics",
+			"EDUC" => "Education",
+			"EECE" => "Electrical &amp; Computer Eng&#39g",
+			"ENMG" => "Engineering Management",
+			"ENGL" => "English",
+			"ENTM" => "Entrepreneurship",
+			"ENHL" => "Environmental Health",
+			"ENSC" => "Environmental Science",
+			"EPHD" => "Epidemiology &amp; Population Hlth",
+			"FINA" => "Finance",
+			"FAAH" => "Fine Arts &amp; Arts History",
+			"FREN" => "French",
+			"GEOL" => "Geology",
+			"GRDS" => "Graphic Design",
+			"HMPD" => "Health Management &amp; Policy",
+			"HPCH" => "Health Promot&amp; Community Healt",
+			"HIST" => "History",
+			"HUMR" => "Human Morphology",
+			"INFO" => "Information Systems",
+			"IDTH" => "Interdepartmental Teaching",
+			"LABM" => "Laboratory Medicine",
+			"LDEM" => "Landscape Design &amp; Eco-Managmn",
+			"INFP" => "MBA Integrative Foundat.Period",
+			"MNGT" => "Management",
+			"MKTG" => "Marketing",
+			"MHRM" => "Mast.in Human Resources Managm",
+			"MFIN" => "Master in Finance",
+			"MATH" => "Mathematics",
+			"MECH" => "Mechanical Engineering",
+			"MCOM" => "Media Studies",
+			"MLSP" => "Medical Laboratory Sciences",
+			"MBIM" => "Microbiology &amp; Immunology",
+			"MEST" => "Middle Eastern Studies",
+			"NURS" => "Nursing",
+			"NFSC" => "Nutrition &amp; Food Science",
+			"PHRM" => "Pharmacology and Therapeutics",
+			"PHIL" => "Philosophy",
+			"PHYS" => "Physics",
+			"PHYL" => "Physiology",
+			"PSPA" => "Political Stud &amp; Public Adm",
+			"PSYC" => "Psychology",
+			"PBHL" => "Public Health",
+			"SHRP" => "SHARP",
+			"XRAY" => "Radiologic Technology",
+			"SOAN" => "Sociology-Anthropology",
+			"STAT" => "Statistics",
+			"EXPR" => "Study Abroad",
+			"URDS" => "Urban Design",
+			"URPL" => "Urban Planning"
+		),
+		"LAU" => array(
+			"ACC" => "Accounting",
+			"ARA" => "Arabic Studies",
+			"ARC" => "Architecture",
+			"FIN" => "Banking &amp; Finance",
+			"BCH" => "Biochemistry",
+			"BIO" => "Biology",
+			"CHM" => "Chemistry",
+			"CHN" => "Chinese",
+			"CIE" => "Civil Engineering",
+			"COM" => "Communication Arts",
+			"CLT" => "Comparative Literature",
+			"COE" => "Computer Engineering",
+			"CSC" => "Computer Science",
+			"CST" => "Cultural Studies",
+			"ECO" => "Economics",
+			"EDU" => "Education",
+			"ELE" => "Electrical Engineering",
+			"ENG" => "English",
+			"ENV" => "Environmental Science",
+			"ETH" => "Ethics",
+			"FEM" => "Family &amp; Entrepren. Mgt.",
+			"ART" => "Fine Arts",
+			"FND" => "Foundation",
+			"BUS" => "General Business",
+			"GNE" => "General Engineering",
+			"GER" => "German",
+			"GRA" => "Graphic Design",
+			"HLT" => "Health Science",
+			"HST" => "History",
+			"HOM" => "Hospitality Management",
+			"INE" => "Industrial Engineering",
+			"ITM" => "Inform. Technology Management",
+			"DES" => "Interior Design",
+			"INA" => "International Affairs",
+			"IBS" => "International Business",
+			"ITA" => "Italian",
+			"LEG" => "Legal Studies",
+			"MGT" => "Management",
+			"MKT" => "Marketing",
+			"MTH" => "Mathematics",
+			"MEE" => "Mechanical Engineering",
+			"MUS" => "Music",
+			"NUR" => "Nursing",
+			"NUT" => "Nutrition",
+			"OPM" => "Operation &amp; Production Mgt.",
+			"PHA" => "Pharmacy",
+			"PHL" => "Philosophy",
+			"PHO" => "Photography",
+			"PED" => "Physical Education",
+			"PHY" => "Physics",
+			"POL" => "Political Science",
+			"PSY" => "Psychology",
+			"QBA" => "Quantitative Business Analysis",
+			"REL" => "Religion",
+			"SOC" => "Sociology",
+			"SPA" => "Spanish",
+			"SAR" => "Special Arabic",
+			"STA" => "Statistics",
+			"TRA" => "Translation",
+			"WOS" => "Women Studies (Institute)"
+		)
+	);
+
+	foreach($subjects[INSTITUTION] as $key => $subject) {
+
+		$model = ORM::for_table('subjects')
+							->where('code', $key)
+							->where('institution_id', INSTITUTION_ID)
+							->find_one();
+
+		if ($model) {
+			$model->set('name', $subject);
+			$model->save();
+		}
+
 	}
 }
 
@@ -248,5 +426,7 @@ require_once 'database.php';
 //select the file
 $text = file_get_contents("courses.html");
 parse($text);
+fixCourseDays();
+fixSubjects();
 
 ?>
