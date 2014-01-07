@@ -1,8 +1,8 @@
 <?php
 
-define('INSTITUTION', 'LAU');
-define('INSTITUTION_ID', 2);
-define('TERM', 'Spring 2014');
+$GLOBALS['institution'] = 'LAU';
+$GLOBALS['institutionIds'] = array(2, 3);
+$GLOBALS['term'] = 'Spring 2014';
 
 function cleanField($field) {
 	//decode any html character
@@ -83,25 +83,23 @@ function addEl($array, $el, $pos) {
 
 // checks the existance of a model with a certain property in table and returns
 // id of found ot created model
-function checkExistance($tableName, $propertyName, $propertyValue) {
-	if (!$propertyValue) {
-		$propertyValue = 'TBA';
-	}
+function checkExistance($tableName, $conditions = array()) {
 
-	if ($tableName == 'subjects') {
-		$model = ORM::for_table($tableName)
-					->where('institution_id', INSTITUTION_ID)
-					->where($propertyName, $propertyValue)
-					->find_one();
-	} else {
-		$model = ORM::for_table($tableName)->where($propertyName, $propertyValue)->find_one();
+	// Search for the model
+	$model = ORM::for_table($tableName);
+	foreach ($conditions as $name => $value) {
+		if (!$value) {
+			$value = 'TBA';
+		}
+		$model->where($name, $value);
 	}
+	$model = $model->find_one();
 
+	// If model not found create it
 	if (!$model) {
 		$model = ORM::for_table($tableName)->create();
-		$model->set($propertyName, $propertyValue);
-		if ($tableName == 'subjects') {
-			$model->set('institution_id', INSTITUTION_ID);
+		foreach ($conditions as $name => $value) {
+			$model->set($name, $value);
 		}
 		$model->save();
 	}
@@ -109,7 +107,6 @@ function checkExistance($tableName, $propertyName, $propertyValue) {
 }
 
 function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $room, $courseId) {
-
 
 	// return if any day null
 	foreach ($days as $day) {
@@ -129,7 +126,7 @@ function insertCourseSlot($instructor, $days, $startTime, $endTime, $building, $
 		$room = 'TBA';
 	}
 
-	$instructorId = checkExistance('instructors', 'name', $instructor);
+	$instructorId = checkExistance('instructors', array('name' => $instructor));
 
 	foreach ($days as $key => $day) {
 		$dd = $key + 1;
@@ -155,6 +152,18 @@ function handleRow($row, $lastCourseId = false) {
 	$code = $row[2];
 	$number = $row[3];
 	$section = $row[4];
+
+	if ($GLOBALS['institution'] == 'LAU') {
+		// $row[5] corresponds to campus number 1 = LAU - beirut, 2 = LAU - Byblos
+		if ($row[5] == 1) {
+			$institutionId = 2;
+		} else {
+			$institutionId = 3;
+		}
+	} elseif ($GLOBALS['institution'] == 'AUB') {
+		$institutionId = 1;
+	}
+
 	$title = $row[7];
 	$days = parseDays($row[8]);
 
@@ -171,11 +180,17 @@ function handleRow($row, $lastCourseId = false) {
 	$room = $location[1];
 
 	if (!empty($crn)) {
-		$subjectId = checkExistance('subjects', 'code', $code);
+		$subjectId = checkExistance(
+			'subjects', 
+			array(
+				'code' => $code,
+				'institution_id' => $institutionId
+			)
+		);
 
 		$course = ORM::for_table('courses')->create();
 		$course->set(array(
-			'term' => TERM,
+			'term' => $GLOBALS['term'],
 			'crn' => $crn,
 			'subject_id' => $subjectId,
 			'number' => $number,
@@ -203,7 +218,7 @@ function parse($text) {
 	$lastCourseId = false;
 
 	//extract the right table
-	$startText = (INSTITUTION == 'LAU') ? '<table  class="datadisplaytable"' : '<table class="datadisplaytable"';
+	$startText = ($GLOBALS['institution'] == 'LAU') ? '<table  class="datadisplaytable"' : '<table class="datadisplaytable"';
 	$startTable = stripos($text, $startText);
 	$endTable = stripos($text, '</table>', $startTable) + 8;
 	$text = substr($text, $startTable, $endTable - $startTable);
@@ -237,13 +252,12 @@ function parse($text) {
 		}
 
 		if (!empty($rowContent)) {
-			if (INSTITUTION == 'AUB') {
+			if ($GLOBALS['institution'] == 'AUB') {
 				if (empty($rowContent[1])) {
 					array_unshift($rowContent, '');
 				}
-				if (count($rowContent) == 23) {
-					$rowContent = addEl($rowContent, '', 10);
-				}
+				unset($rowContent[8]);
+				$rowContent = array_values($rowContent);
 			}
 
 			$lastCourseId = handleRow($rowContent, $lastCourseId);
@@ -402,18 +416,19 @@ function fixSubjects() {
 		)
 	);
 
-	foreach($subjects[INSTITUTION] as $key => $subject) {
+	foreach($subjects[$GLOBALS['institution']] as $key => $subject) {
 
-		$model = ORM::for_table('subjects')
-							->where('code', $key)
-							->where('institution_id', INSTITUTION_ID)
-							->find_one();
+		$models = ORM::for_table('subjects')
+					->where('code', $key)
+					->where_in('institution_id', $GLOBALS['institutionIds'])
+					->find_many();
 
-		if ($model) {
-			$model->set('name', $subject);
-			$model->save();
+		if ($models) {
+			foreach ($models as $model) {
+				$model->set('name', $subject);
+				$model->save();
+			}
 		}
-
 	}
 }
 
