@@ -1,8 +1,19 @@
 <?php
 
-$GLOBALS['institution'] = 'LAU';
-$GLOBALS['institutionIds'] = array(2, 3);
-$GLOBALS['term'] = 'Spring 2014';
+$GLOBALS['institution'] = 'AUB';
+$GLOBALS['institutionId'] = 2;
+$GLOBALS['institutionIdBeirut'] = 2;
+$GLOBALS['institutionIdJbeil'] = 3;
+$GLOBALS['term'] = 'Summer 2014';
+
+if ($GLOBALS['institution'] == 'AUB') {
+	$GLOBALS['institutionIds'] = array($GLOBALS['institutionId']);
+} else {
+	$GLOBALS['institutionIds'] = array(
+		$GLOBALS['institutionIdBeirut'],
+		$GLOBALS['institutionIdJbeil']
+	);	
+}
 
 function cleanField($field) {
 	//decode any html character
@@ -156,12 +167,12 @@ function handleRow($row, $lastCourseId = false) {
 	if ($GLOBALS['institution'] == 'LAU') {
 		// $row[5] corresponds to campus number 1 = LAU - beirut, 2 = LAU - Byblos
 		if ($row[5] == 1) {
-			$institutionId = 2;
+			$institutionId = $GLOBALS['institutionIdBeirut'];
 		} else {
-			$institutionId = 3;
+			$institutionId = $GLOBALS['institutionIdJbeil'];
 		}
 	} elseif ($GLOBALS['institution'] == 'AUB') {
-		$institutionId = 1;
+		$institutionId = $GLOBALS['institutionId'];
 	}
 
 	$title = $row[7];
